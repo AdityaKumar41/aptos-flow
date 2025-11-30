@@ -1,0 +1,18 @@
+[package]
+name = "aptos-flow"
+version = "1.0.0"
+authors = []
+
+[addresses]
+my_aptos_project = "0x2fa083051178cb70a30ac41fc51b8e5765f67059ef7497a348ca68dc939607fd"
+deployer = "0x2fa083051178cb70a30ac41fc51b8e5765f67059ef7497a348ca68dc939607fd"
+
+[dev-addresses]
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-core.git"
+rev = "6f83bc6d02207298b2dee91133d75538789bf582"
+subdir = "aptos-move/framework/aptos-framework"
+
+[dev-dependencies]
+

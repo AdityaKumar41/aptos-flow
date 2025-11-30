@@ -1,0 +1,154 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider   = "prisma-client"
+  output     = "../src/generated/client"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User model - represents wallet addresses
+model User {
+  id            String    @id @default(uuid())
+  walletAddress String    @unique @db.VarChar(66)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  payments Payment[]
+  prompts  Prompt[]
+
+  @@index([walletAddress])
+  @@map("users")
+}
+
+// Payment model - tracks Aptos micropayments
+model Payment {
+  id         String        @id @default(uuid())
+  userId     String
+  txHash     String        @unique @db.VarChar(66)
+  amount     BigInt
+  status     PaymentStatus @default(PENDING)
+  verifiedAt DateTime?
+  expiresAt  DateTime
+  createdAt  DateTime      @default(now())
+
+  // Relations
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  prompts Prompt[]
+
+  @@index([userId])
+  @@index([txHash])
+  @@index([status])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+// Prompt model - stores user prompts and generation status
+model Prompt {
+  id           String       @id @default(uuid())
+  userId       String
+  paymentId    String
+  promptText   String       @db.Text
+  status       PromptStatus @default(PENDING)
+  workflowJson Json?
+  errorMessage String?      @db.Text
+  createdAt    DateTime     @default(now())
+  completedAt  DateTime?
+
+  // Relations
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payment  Payment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  workflow Workflow?
+
+  @@index([userId])
+  @@index([paymentId])
+  @@index([status])
+  @@map("prompts")
+}
+
+enum PromptStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// Workflow model - stores generated workflow data
+model Workflow {
+  id              String           @id @default(uuid())
+  promptId        String           @unique
+  workflowData    Json
+  executionStatus ExecutionStatus  @default(DRAFT)
+  
+  // Scheduling & Triggers
+  isActive        Boolean         @default(true)
+  triggerType     String          @default("manual") // manual, schedule, event, price
+  cronExpression  String?         // For schedule triggers
+  triggerConfig   Json?           // For event/price triggers (address, threshold, etc.)
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@index([executionStatus])
+  @@map("workflows")
+}
+
+enum ExecutionStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+// RateLimit model - tracks API usage per wallet
+model RateLimit {
+  id            String   @id @default(uuid())
+  walletAddress String   @db.VarChar(66)
+  requestCount  Int      @default(0)
+  windowStart   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([walletAddress, windowStart])
+  @@index([walletAddress])
+  @@map("rate_limits")
+}
+
+// ChatConversation model - stores chat sessions
+model ChatConversation {
+  id            String        @id @default(uuid())
+  walletAddress String        @db.VarChar(66)
+  title         String?       @db.VarChar(255)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  messages      ChatMessage[]
+
+  @@index([walletAddress])
+  @@map("chat_conversations")
+}
+
+// ChatMessage model - stores individual messages
+model ChatMessage {
+  id             String           @id @default(uuid())
+  conversationId String
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String           @db.VarChar(20) // 'user' or 'assistant'
+  content        String           @db.Text
+  createdAt      DateTime         @default(now())
+
+  @@index([conversationId])
+  @@map("chat_messages")
+}

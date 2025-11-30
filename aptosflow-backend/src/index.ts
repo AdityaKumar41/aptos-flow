@@ -10,6 +10,9 @@ import healthRoute from './routes/health.route.js';
 import nodesRoute from './routes/nodes.route.js';
 import chatRoute from './routes/chat.route.js';
 import persistenceRoute from './routes/persistence.route.js';
+import executeRoute from './routes/workflow/execute.route.js';
+import chatMessagesRoute from './routes/chat/messages.route.js';
+import workflowSaveRoute from './routes/workflow/save.route.js';
 import prisma from './utils/prisma.js';
 
 const app = express();
@@ -39,9 +42,12 @@ app.use((req, _res, next) => {
 app.use('/health', healthRoute);
 app.use('/api/generate', generateRoute);
 app.use('/api/workflow/stream', generateStreamRoute); // Separate endpoint to avoid conflicts
+app.use('/api/workflow', executeRoute); // Workflow execution
+app.use('/api/workflows', workflowSaveRoute); // Workflow save/load
 app.use('/api/payment', paymentRoute);
 app.use('/api/nodes', nodesRoute);
 app.use('/api/chat', chatRoute);
+app.use('/api/chat', chatMessagesRoute); // Chat message persistence
 app.use('/api/workflows', persistenceRoute);
 app.use('/api/chat', persistenceRoute);
 

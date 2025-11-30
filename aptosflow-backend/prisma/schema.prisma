@@ -21,6 +21,7 @@ model User {
   // Relations
   payments Payment[]
   prompts  Prompt[]
+  chatMessages ChatMessage[]
 
   @@index([walletAddress])
   @@map("users")
@@ -103,14 +104,33 @@ model Workflow {
   prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
 
   @@index([executionStatus])
+  @@index([isActive])
   @@map("workflows")
 }
 
+// Chat message model - stores AI assistant chat history
+model ChatMessage {
+  id        String   @id @default(uuid())
+  userId    String
+  role      String   // USER or ASSISTANT
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
 enum ExecutionStatus {
   DRAFT
   ACTIVE
-  PAUSED
+  PENDING
+  SUBMITTED
+  RUNNING
   COMPLETED
+  FAILED
+  PAUSED
+  CANCELLED
 }
 
 // RateLimit model - tracks API usage per wallet
@@ -127,16 +147,19 @@ model RateLimit {
   @@map("rate_limits")
 }
 
-// ChatConversation model - stores chat sessions
+// ChatConversation model - stores conversation metadata
 model ChatConversation {
-  id            String        @id @default(uuid())
-  walletAddress String        @db.VarChar(66)
-  title         String?       @db.VarChar(255)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id            String   @id @default(uuid())
+  userId        String
+  title         String?  @db.VarChar(255)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages      ChatMessage[]
 
-  @@index([walletAddress])
+  @@index([userId])
   @@map("chat_conversations")
 }
 

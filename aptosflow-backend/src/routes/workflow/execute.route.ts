@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { requirePayment } from '../../middleware/payment.middleware.js';
 import { aptosService } from '../../services/aptos.service.js';
 import prisma from '../../utils/prisma.js';
-import { Ed25519PrivateKey } from '@aptos-labs/ts-sdk';
 
 const router = Router();
 
@@ -42,11 +41,11 @@ router.post('/execute', requirePayment, async (req, res) => {
     });
 
     // Execute on contract using backend private key
-    const privateKeyHex = process.env.APTOS_PRIVATE_KEY!;
-    const privateKey = new Ed25519PrivateKey(privateKeyHex);
+    // const privateKeyHex = process.env.APTOS_PRIVATE_KEY!;
+    // const privateKey = new Ed25519PrivateKey(privateKeyHex);
 
+    // Execute workflow on blockchain
     const txHash = await aptosService.executeWorkflow(
-      privateKey,
       dbWorkflow.id
     );
 
@@ -57,23 +56,15 @@ router.post('/execute', requirePayment, async (req, res) => {
         executionStatus: 'SUBMITTED',
         workflowData: { 
           ...dbWorkflow.workflowData as any,
-          txHash 
+          transactionHash: txHash 
         },
       },
     });
 
-    return res.json({
-      success: true,
-      workflowId: dbWorkflow.id,
-      txHash,
-      message: 'Workflow submitted for execution',
-    });
+    return res.json({ success: true, transactionHash: txHash });
   } catch (error: any) {
     console.error('Workflow execution error:', error);
-    return res.status(500).json({
-      error: 'Failed to execute workflow',
-      details: error.message,
-    });
+    return res.status(500).json({ error: error.message || 'Failed to execute workflow' });
   }
 });
 
@@ -147,95 +138,6 @@ function validateWorkflow(nodes: any[]) {
     valid: errors.length === 0,
     errors,
   };
-}
-
-function mapWorkflowToContract(nodes: any[], edges: any[]) {
-  const nodeIdMap = new Map<string, number>();
-  nodes.forEach((node, index) => {
-    nodeIdMap.set(node.id, index);
-  });
-
-  return nodes.map((node) => {
-    const nextEdges = edges.filter((e: any) => e.source === node.id);
-    const next_ids = nextEdges.map((e: any) => nodeIdMap.get(e.target) || 0);
-
-    const config = node.data.config || {};
-    
-    return {
-      id: nodeIdMap.get(node.id) || 0,
-      node_type: getNodeType(node.type),
-      target_address: extractAddress(node.type, config),
-      amount: extractAmount(node.type, config),
-      data: extractData(node.type, config),
-      next_ids,
-    };
-  });
-}
-
-function getNodeType(type: string): number {
-  const typeMap: Record<string, number> = {
-    manual_trigger: 0,
-    schedule_trigger: 1,
-    price_trigger: 2,
-    event_trigger: 3,
-    balance_check: 100,
-    oracle_check: 101,
-    transfer_action: 200,
-    stake_action: 201,
-    swap_action: 202,
-    liquidity_provide: 203,
-    borrow_lend_action: 204,
-    dao_vote_action: 205,
-    wait_node: 300,
-    branch_node: 301,
-    end_node: 302,
-  };
-  return typeMap[type] || 0;
-}
-
-function extractAddress(nodeType: string, config: any): string {
-  switch (nodeType) {
-    case 'transfer_action':
-      return config.recipient || '0x0';
-    case 'stake_action':
-      return config.poolAddress || '0x0';
-    case 'dao_vote_action':
-      return config.daoContract || '0x0';
-    default:
-      return '0x0';
-  }
-}
-
-function extractAmount(nodeType: string, config: any): string {
-  switch (nodeType) {
-    case 'transfer_action':
-    case 'stake_action':
-    case 'swap_action':
-    case 'borrow_lend_action':
-      return config.amount || '0';
-    case 'balance_check':
-      return config.amount || '0';
-    default:
-      return '0';
-  }
-}
-
-function extractData(nodeType: string, config: any): number[] {
-  const encoder = new TextEncoder();
-  
-  switch (nodeType) {
-    case 'swap_action':
-      return Array.from(encoder.encode(
-        JSON.stringify({
-          fromToken: config.fromToken,
-          toToken: config.toToken,
-          slippage: config.slippage,
-          dex: config.dex,
-        })
-      ));
-    default:
-      return [];
-  }
 }
 
 export default router;

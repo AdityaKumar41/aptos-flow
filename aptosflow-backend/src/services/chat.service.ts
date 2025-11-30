@@ -5,23 +5,35 @@ export class ChatService {
    * Get or create a conversation for a wallet
    */
   async getOrCreateConversation(walletAddress: string): Promise<string> {
-    // Find the most recent conversation for this wallet
-    let conversation = await prisma.chatConversation.findFirst({
+    // Find user first
+    let user = await prisma.user.findUnique({
       where: { walletAddress },
-      orderBy: { updatedAt: 'desc' },
     });
 
-    // If no conversation exists or the last one is old (>24h), create a new one
-    if (!conversation || (Date.now() - conversation.updatedAt.getTime() > 24 * 60 * 60 * 1000)) {
-      conversation = await prisma.chatConversation.create({
-        data: {
-          walletAddress,
-          title: 'New Conversation',
-        },
+    if (!user) {
+      user = await prisma.user.create({
+        data: { walletAddress },
       });
     }
 
-    return conversation.id;
+    // Find or create conversation
+    const conversation = await prisma.chatConversation.findFirst({
+      where: { userId: user.id },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (conversation) {
+      return conversation.id;
+    }
+
+    const newConversation = await prisma.chatConversation.create({
+      data: {
+        userId: user.id,
+        title: 'New Conversation',
+      },
+    });
+
+    return newConversation.id;
   }
 
   /**
@@ -64,17 +76,27 @@ export class ChatService {
   /**
    * Get all conversations for a wallet
    */
-  async getWalletConversations(walletAddress: string) {
-    return await prisma.chatConversation.findMany({
+  async getChatHistory(walletAddress: string): Promise<any[]> {
+    // Find user first
+    const user = await prisma.user.findUnique({
       where: { walletAddress },
-      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (!user) {
+      return [];
+    }
+
+    const conversations = await prisma.chatConversation.findMany({
+      where: { userId: user.id },
       include: {
         messages: {
-          take: 1,
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: 'asc' },
         },
       },
+      orderBy: { updatedAt: 'desc' },
+      take: 1,
     });
+    return conversations;
   }
 }
 

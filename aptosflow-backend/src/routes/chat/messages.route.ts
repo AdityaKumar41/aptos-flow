@@ -26,10 +26,25 @@ router.post('/messages', async (req, res) => {
       });
     }
 
+    // Find or create conversation for this user
+    let conversation = await prisma.chatConversation.findFirst({
+      where: { userId: user.id },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    if (!conversation) {
+      conversation = await prisma.chatConversation.create({
+        data: {
+          userId: user.id,
+          title: 'New Conversation',
+        },
+      });
+    }
+
     // Create message
     const message = await prisma.chatMessage.create({
       data: {
-        userId: user.id,
+        conversationId: conversation.id,
         role,
         content,
       },
@@ -52,19 +67,27 @@ router.get('/history/:walletAddress', async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { walletAddress },
-      include: {
-        chatMessages: {
-          orderBy: { createdAt: 'asc' },
-          take: 100, // Limit to last 100 messages
-        },
-      },
     });
 
     if (!user) {
       return res.json({ success: true, messages: [] });
     }
 
-    return res.json({ success: true, messages: user.chatMessages });
+    // Get all conversations and their messages
+    const conversations = await prisma.chatConversation.findMany({
+      where: { userId: user.id },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 1, // Get most recent conversation
+    });
+
+    const messages = conversations[0]?.messages || [];
+
+    return res.json({ success: true, messages });
   } catch (error: any) {
     console.error('Error fetching chat history:', error);
     return res.status(500).json({ error: 'Failed to fetch history' });

@@ -31,8 +31,13 @@ export type PromptStatus = (typeof PromptStatus)[keyof typeof PromptStatus]
 export const ExecutionStatus = {
   DRAFT: 'DRAFT',
   ACTIVE: 'ACTIVE',
+  PENDING: 'PENDING',
+  SUBMITTED: 'SUBMITTED',
+  RUNNING: 'RUNNING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
   PAUSED: 'PAUSED',
-  COMPLETED: 'COMPLETED'
+  CANCELLED: 'CANCELLED'
 } as const
 
 export type ExecutionStatus = (typeof ExecutionStatus)[keyof typeof ExecutionStatus]

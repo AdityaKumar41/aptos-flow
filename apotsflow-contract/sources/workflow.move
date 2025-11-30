@@ -220,6 +220,99 @@ module my_aptos_project::workflow_graph {
         workflow_id
     }
 
+    /// Register and execute a generic workflow
+    public entry fun register_and_execute_workflow(
+        account: &signer,
+        node_ids: vector<u64>,
+        node_types: vector<u8>,
+        target_addresses: vector<address>,
+        amounts: vector<u64>,
+        next_node_counts: vector<u64>,
+        flat_next_node_ids: vector<u64>
+    ) acquires WorkflowStore {
+        let workflow_id = create_workflow_internal(
+            account, 
+            node_ids, 
+            node_types, 
+            target_addresses, 
+            amounts, 
+            next_node_counts, 
+            flat_next_node_ids
+        );
+        execute_workflow(account, workflow_id);
+    }
+
+    fun create_workflow_internal(
+        account: &signer,
+        node_ids: vector<u64>,
+        node_types: vector<u8>,
+        target_addresses: vector<address>,
+        amounts: vector<u64>,
+        next_node_counts: vector<u64>,
+        flat_next_node_ids: vector<u64>
+    ): u64 acquires WorkflowStore {
+        let owner = signer::address_of(account);
+        init_workflow_store(account);
+        
+        let store = borrow_global_mut<WorkflowStore>(owner);
+        let workflow_id = store.next_workflow_id;
+        store.next_workflow_id = workflow_id + 1;
+
+        let nodes_map = simple_map::create<u64, Node>();
+        let len = vector::length(&node_ids);
+        let i = 0;
+        let next_idx = 0;
+
+        while (i < len) {
+            let id = *vector::borrow(&node_ids, i);
+            let type = *vector::borrow(&node_types, i);
+            let target = *vector::borrow(&target_addresses, i);
+            let amount = *vector::borrow(&amounts, i);
+            
+            let count = *vector::borrow(&next_node_counts, i);
+            let next_ids = vector::empty<u64>();
+            let j = 0;
+            while (j < count) {
+                vector::push_back(&mut next_ids, *vector::borrow(&flat_next_node_ids, next_idx));
+                next_idx = next_idx + 1;
+                j = j + 1;
+            };
+
+            let node = Node {
+                id,
+                node_type: type,
+                target_address: target,
+                amount,
+                data: vector::empty(),
+                next_ids,
+            };
+            simple_map::add(&mut nodes_map, id, node);
+            i = i + 1;
+        };
+
+        let start_node_id = if (len > 0) { *vector::borrow(&node_ids, 0) } else { 0 };
+
+        let workflow = Workflow {
+            id: workflow_id,
+            owner,
+            nodes: nodes_map,
+            start_node_id,
+            created_at: timestamp::now_seconds(),
+            last_executed_at: 0,
+            is_locked: false,
+        };
+
+        table::add(&mut store.workflows, workflow_id, workflow);
+        
+        event::emit(WorkflowRegisteredEvent {
+            workflow_id,
+            owner,
+            node_count: len,
+        });
+
+        workflow_id
+    }
+
 
     /// Execute a workflow
     public entry fun execute_workflow(

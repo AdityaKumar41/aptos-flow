@@ -1036,7 +1036,7 @@ export type RateLimitScalarFieldEnum = (typeof RateLimitScalarFieldEnum)[keyof t
 
 export const ChatConversationScalarFieldEnum = {
   id: 'id',
-  walletAddress: 'walletAddress',
+  userId: 'userId',
   title: 'title',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'

@@ -3,6 +3,49 @@ import { requirePayment } from '@/middleware/payment.middleware.js';
 import { aiService } from '@/services/ai.service.js';
 import prisma from '@/utils/prisma.js';
 
+/**
+ * Extract values from user prompt to pre-fill node configurations
+ */
+function extractValuesFromPrompt(prompt: string) {
+  const extracted: any = {};
+
+  // Extract Aptos addresses (0x followed by hex)
+  const addressMatch = prompt.match(/0x[a-fA-F0-9]{1,64}/);
+  if (addressMatch) {
+    extracted.address = addressMatch[0];
+    extracted.recipient = addressMatch[0];
+  }
+
+  // Extract amounts with APT
+  const aptMatch = prompt.match(/(\d+(?:\.\d+)?)\s*APT/i);
+  if (aptMatch) {
+    const aptAmount = parseFloat(aptMatch[1]);
+    extracted.amount = (aptAmount * 100000000).toString(); // Convert to octas
+    extracted.amountInAPT = aptMatch[1];
+  }
+
+  // Extract plain numbers (might be amounts in octas)
+  const numberMatch = prompt.match(/\b(\d{6,})\b/); // 6+ digits likely octas
+  if (numberMatch && !extracted.amount) {
+    extracted.amount = numberMatch[1];
+  }
+
+  // Extract token names
+  const tokenMatch = prompt.match(/\b(APT|USDC|USDT|BTC|ETH)\b/i);
+  if (tokenMatch) {
+    extracted.token = tokenMatch[1].toUpperCase();
+  }
+
+  // Extract pool/validator addresses (second address if exists)
+  const allAddresses = prompt.match(/0x[a-fA-F0-9]{1,64}/g);
+  if (allAddresses && allAddresses.length > 1) {
+    extracted.poolAddress = allAddresses[1];
+    extracted.validatorAddress = allAddresses[1];
+  }
+
+  return extracted;
+}
+
 const router = Router();
 
 /**
@@ -66,6 +109,9 @@ router.post('/', requirePayment, async (req: Request, res: Response): Promise<vo
     // Detect if prompt mentions schedule/time keywords
     const hasScheduleKeywords = /every|daily|weekly|monthly|hourly|cron|schedule|at \d|on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)/i.test(prompt);
 
+    // ENHANCED: Extract values from prompt for pre-filling nodes
+    const extractedValues = extractValuesFromPrompt(prompt);
+
     // Stream partial objects as they're generated
     for await (const partialObject of stream.partialObjectStream) {
       completeWorkflow = partialObject; // Keep updating with latest
@@ -104,12 +150,20 @@ router.post('/', requirePayment, async (req: Request, res: Response): Promise<vo
       // Send condition node when available (only once)
       if (partialObject.condition && !sentNodes.has('condition')) {
         conditionId = `condition_${Date.now()}`;
+        
+        // PRE-FILL: Apply extracted values to condition
+        const conditionData = {
+          ...partialObject.condition,
+          address: (partialObject.condition as any).address || extractedValues.address,
+          amount: (partialObject.condition as any).amount || extractedValues.amount,
+        };
+        
         res.write(`data: ${JSON.stringify({
           type: 'node',
           data: {
             id: conditionId,
             type: partialObject.condition.type || 'balance_check',
-            ...partialObject.condition,
+            ...conditionData,
           }
         })}\n\n`);
         sentNodes.add('condition');
@@ -131,12 +185,23 @@ router.post('/', requirePayment, async (req: Request, res: Response): Promise<vo
       // Send action node when available (only once)
       if (partialObject.action && !sentNodes.has('action')) {
         actionId = `action_${Date.now()}`;
+        
+        // PRE-FILL: Apply extracted values to action
+        const actionData = {
+          ...partialObject.action,
+          recipient: (partialObject.action as any).recipient || extractedValues.recipient,
+          amount: (partialObject.action as any).amount || extractedValues.amount,
+          token: (partialObject.action as any).token || extractedValues.token || 'APT',
+          poolAddress: (partialObject.action as any).poolAddress || extractedValues.poolAddress,
+          validatorAddress: (partialObject.action as any).validatorAddress || extractedValues.validatorAddress,
+        };
+        
         res.write(`data: ${JSON.stringify({
           type: 'node',
           data: {
             id: actionId,
             type: partialObject.action.type || 'transfer_action',
-            ...partialObject.action,
+            ...actionData,
           }
         })}\n\n`);
         sentNodes.add('action');
